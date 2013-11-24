@@ -263,7 +263,8 @@ static phys_bytes alloc_pages(int pages, int memflags)
 		return NO_MEM;
 
 	/* remember for next time */
-	lastscan = mem;
+	//lastscan = mem;
+	lastscan = -1; /* lastscan = mem implements next fit, we want to always start at a constant location for first fit */
 
 	for(i = mem; i < mem + pages; i++) {
 		UNSET_BIT(free_pages_bitmap, i);
