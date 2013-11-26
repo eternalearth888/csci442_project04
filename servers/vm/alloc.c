@@ -15,6 +15,10 @@
 #include <minix/bitmap.h>
 
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <stdio.h>
 
 #include <limits.h>
 #include <string.h>
@@ -223,12 +227,16 @@ static int findbit(int low, int startscan, int pages, int memflags, int *len)
  *===========================================================================*/
 static phys_bytes alloc_pages(int pages, int memflags)
 {
+	// int shmid;
+	// key_t key=33385701;
+	// int glo_debug;
 	phys_bytes boundary16 = 16 * 1024 * 1024 / VM_PAGE_SIZE;
 	phys_bytes boundary1  =  1 * 1024 * 1024 / VM_PAGE_SIZE;
 	phys_bytes mem = NO_MEM;
 	int maxpage = NUMBER_PHYSICAL_PAGES - 1, i;
 	static int lastscan = -1;
-	int startscan, run_length;
+	int startscan, run_length, k;
+	int hole_start, is_hole=0, hole_length=1;
 
 	if(memflags & PAF_LOWER16MB)
 		maxpage = boundary16 - 1;
@@ -265,6 +273,30 @@ static phys_bytes alloc_pages(int pages, int memflags)
 	/* remember for next time */
 	//lastscan = mem;
 	lastscan = -1; /* lastscan = mem implements next fit, we want to always start at a constant location for first fit */
+	
+	printf("\nBitmap\n");
+	for(k=0; k<PAGE_BITMAP_CHUNKS; k++) {
+		if(is_hole) {
+			if(!free_pages_bitmap[k]) {
+				if(hole_length > 2)
+					printf("Start: %05d Length: %05d\n", hole_start, hole_length);
+				is_hole=0;
+				hole_length=1;
+			} else {
+				hole_length++;
+			}
+		} else {
+			if(free_pages_bitmap[k]) {
+				is_hole=1;
+				hole_start=k;
+			}
+		}
+	}
+	if(is_hole) {
+		printf("Start: %05d Length: %05d\n", hole_start, hole_length);
+		is_hole=0;
+		hole_length=1;
+	}
 
 	for(i = mem; i < mem + pages; i++) {
 		UNSET_BIT(free_pages_bitmap, i);
