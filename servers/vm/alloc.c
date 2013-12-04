@@ -236,7 +236,7 @@ static phys_bytes alloc_pages(int pages, int memflags)
 	int maxpage = NUMBER_PHYSICAL_PAGES - 1, i;
 	static int lastscan = -1;
 	int startscan, run_length, k;
-	int hole_start, is_hole=0, hole_length=1;
+	int hole_start, is_hole=0, hole_length=1, total_free_pages=0;
 
 	if(memflags & PAF_LOWER16MB)
 		maxpage = boundary16 - 1;
@@ -271,36 +271,32 @@ static phys_bytes alloc_pages(int pages, int memflags)
 		return NO_MEM;
 
 	/* remember for next time */
-	//lastscan = mem;
-	lastscan = -1; /* lastscan = mem implements next fit, we want to always start at a constant location for first fit */
+	//lastscan = mem; /* lastscan = mem implements next fit, we want to always start at a constant location for first fit */
 	
-	printf("\nBitmap\n");
-	for(k=0; k<PAGE_BITMAP_CHUNKS; k++) {
-		if(is_hole) {
-			if(!free_pages_bitmap[k]) {
-				if(hole_length > 2)
-					printf("Start: %05d Length: %05d\n", hole_start, hole_length);
-				is_hole=0;
-				hole_length=1;
-			} else {
-				hole_length++;
-			}
-		} else {
-			if(free_pages_bitmap[k]) {
-				is_hole=1;
-				hole_start=k;
-			}
-		}
-	}
-	if(is_hole) {
-		printf("Start: %05d Length: %05d\n", hole_start, hole_length);
-		is_hole=0;
-		hole_length=1;
-	}
-
 	for(i = mem; i < mem + pages; i++) {
 		UNSET_BIT(free_pages_bitmap, i);
 	}
+
+	printf("\nBitmap\n");
+	for(k=0; k<NUMBER_PHYSICAL_PAGES; k++) {
+		if(is_hole) {
+			if(!page_isfree(k)) {
+				if(hole_length > 100)
+					printf("Start: %d\t\tLength: %d\n", hole_start, hole_length);
+				is_hole=0;
+			} else {
+				hole_length++;
+				total_free_pages++;
+			}
+		}
+		else if(page_isfree(k)) {
+			is_hole=1;
+			hole_length=1;
+			total_free_pages++;
+			hole_start=k;
+		}
+	}
+		printf("Total Free Memory: %d\n", total_free_pages);
 
 	if(memflags & PAF_CLEAR) {
 		int s;
@@ -317,7 +313,9 @@ static phys_bytes alloc_pages(int pages, int memflags)
  *===========================================================================*/
 static void free_pages(phys_bytes pageno, int npages)
 {
-	int i, lim = pageno + npages - 1;
+	int i, k, lim = pageno + npages - 1;
+	int is_hole=0;
+	int hole_length=1, hole_start=0, total_free_pages=0;
 
 #if JUNKFREE
        if(sys_memset(NONE, 0xa5a5a5a5, VM_PAGE_SIZE * pageno,
@@ -331,6 +329,27 @@ static void free_pages(phys_bytes pageno, int npages)
 			free_page_cache[free_page_cache_size++] = i;
 		}
 	}
+
+	printf("\nBitmap\n");
+	for(k=0; k<NUMBER_PHYSICAL_PAGES; k++) {
+		if(is_hole) {
+			if(!page_isfree(k)) {
+				if(hole_length > 100)
+					printf("Start: %d\t\tLength: %d\n", hole_start, hole_length);
+				is_hole=0;
+			} else {
+				hole_length++;
+				total_free_pages++;
+			}
+		}
+		else if(page_isfree(k)) {
+			is_hole=1;
+			hole_length=1;
+			total_free_pages++;
+			hole_start=k;
+		}
+	}
+		printf("Total Free Memory: %d\n", total_free_pages);
 }
 
 /*===========================================================================*
